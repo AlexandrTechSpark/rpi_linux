@@ -404,6 +404,7 @@ static int boe_bf060y8m_aj0_probe(struct mipi_dsi_device *dsi)
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
 		dev_err(dev, "Failed to attach to DSI host: %d\n", ret);
+		drm_panel_remove(&boe->panel);
 		return ret;
 	}
 
