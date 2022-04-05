@@ -207,7 +207,11 @@ static int tdo_tl070wsh30_panel_probe(struct mipi_dsi_device *dsi)
 	if (err < 0)
 		return err;
 
-	return mipi_dsi_attach(dsi);
+	ret = mipi_dsi_attach(dsi);
+	if (ret)
+		drm_panel_remove(&tdo_tl070wsh30->base);
+
+	return ret;
 }
 
 static int tdo_tl070wsh30_panel_remove(struct mipi_dsi_device *dsi)
