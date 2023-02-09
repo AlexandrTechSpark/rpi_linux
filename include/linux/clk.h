@@ -15,7 +15,6 @@
 
 struct device;
 struct clk;
-struct clk_request;
 struct device_node;
 struct of_phandle_args;
 
@@ -745,8 +744,9 @@ int clk_set_parent(struct clk *clk, struct clk *parent);
  * clk_get_parent - get the parent clock source for this clock
  * @clk: clock source
  *
- * Returns struct clk corresponding to parent clock source, or
- * valid IS_ERR() condition containing errno.
+ * Returns struct clk corresponding to parent clock source, a NULL
+ * pointer if it doesn't have a parent, or a valid IS_ERR() condition
+ * containing errno.
  */
 struct clk *clk_get_parent(struct clk *clk);
 
@@ -783,9 +783,6 @@ int clk_save_context(void);
  * so locking is not necessary.
  */
 void clk_restore_context(void);
-
-struct clk_request *clk_request_start(struct clk *clk, unsigned long rate);
-void clk_request_done(struct clk_request *req);
 
 #else /* !CONFIG_HAVE_CLK */
 
@@ -988,6 +985,17 @@ static inline void clk_bulk_disable_unprepare(int num_clks,
 {
 	clk_bulk_disable(num_clks, clks);
 	clk_bulk_unprepare(num_clks, clks);
+}
+
+/**
+ * clk_drop_range - Reset any range set on that clock
+ * @clk: clock source
+ *
+ * Returns success (0) or negative errno.
+ */
+static inline int clk_drop_range(struct clk *clk)
+{
+	return clk_set_rate_range(clk, 0, ULONG_MAX);
 }
 
 /**

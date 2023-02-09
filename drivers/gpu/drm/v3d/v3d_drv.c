@@ -26,6 +26,9 @@
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_managed.h>
+
+#include <soc/bcm2835/raspberrypi-firmware.h>
+
 #include <uapi/drm/v3d_drm.h>
 
 #include "v3d_drv.h"
@@ -247,11 +250,14 @@ map_regs(struct v3d_dev *v3d, void __iomem **regs, const char *name)
 static int v3d_platform_drm_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct rpi_firmware *firmware;
+	struct device_node *node;
 	struct drm_device *drm;
 	struct v3d_dev *v3d;
 	int ret;
 	u32 mmu_debug;
 	u32 ident1;
+	u64 mask;
 
 
 	v3d = devm_drm_dev_alloc(dev, &v3d_drm_driver, struct v3d_dev, drm);
@@ -271,8 +277,11 @@ static int v3d_platform_drm_probe(struct platform_device *pdev)
 		return ret;
 
 	mmu_debug = V3D_READ(V3D_MMU_DEBUG_INFO);
-	dma_set_mask_and_coherent(dev,
-		DMA_BIT_MASK(30 + V3D_GET_FIELD(mmu_debug, V3D_MMU_PA_WIDTH)));
+	mask = DMA_BIT_MASK(30 + V3D_GET_FIELD(mmu_debug, V3D_MMU_PA_WIDTH));
+	ret = dma_set_mask_and_coherent(dev, mask);
+	if (ret)
+		return ret;
+
 	v3d->va_width = 30 + V3D_GET_FIELD(mmu_debug, V3D_MMU_VA_WIDTH);
 
 	ident1 = V3D_READ(V3D_HUB_IDENT1);
@@ -303,7 +312,20 @@ static int v3d_platform_drm_probe(struct platform_device *pdev)
 			dev_err(dev, "Failed to get clock (%ld)\n", PTR_ERR(v3d->clk));
 		return PTR_ERR(v3d->clk);
 	}
-	v3d->clk_up_rate = clk_get_rate(v3d->clk);
+
+	node = rpi_firmware_find_node();
+	if (!node)
+		return -EINVAL;
+
+	firmware = rpi_firmware_get(node);
+	of_node_put(node);
+	if (!firmware)
+		return -EPROBE_DEFER;
+
+	v3d->clk_up_rate = rpi_firmware_clk_get_max_rate(firmware,
+							 RPI_FIRMWARE_V3D_CLK_ID);
+	rpi_firmware_put(firmware);
+
 	/* For downclocking, drop it to the minimum frequency we can get from
 	 * the CPRMAN clock generator dividing off our parent.  The divider is
 	 * 4 bits, but ask for just higher than that so that rounding doesn't
@@ -338,7 +360,7 @@ static int v3d_platform_drm_probe(struct platform_device *pdev)
 	if (ret)
 		goto irq_disable;
 
-	ret = clk_set_rate(v3d->clk, v3d->clk_down_rate);
+	ret = clk_set_min_rate(v3d->clk, v3d->clk_down_rate);
 	WARN_ON_ONCE(ret != 0);
 
 	return 0;
